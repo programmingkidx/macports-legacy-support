@@ -8,29 +8,58 @@
 #include <string.h>
 #include <unistd.h>
 
-// Call this function to print a stacktrace at the call location
-int backtrace(void** array, int size)
-{
-    unsigned int level = 0;
-    void *saved_ra = __builtin_return_address(0);
-    void **fp = (void **)__builtin_frame_address(0);
-    void *saved_fp = __builtin_frame_address(0);
 
-    level++;
-    fp = saved_fp;
-    while (fp) {
-        saved_fp = *fp;
-        fp = saved_fp;
-        if (*fp == NULL)
+int backtrace(void **array, int size)
+{
+#if defined(__ppc__) || defined(__ppc64__)
+    void **fp = __builtin_frame_address(1);
+#elif defined(__i386__) || defined(__x86_64__)
+    void **fp = __builtin_frame_address(0);
+#else
+    #warning "Unknown architecture detected, PowerPC and x86 are supported"
+    void **fp = __builtin_frame_address(0);
+#endif
+
+    int count = 0;
+    void *ret;
+    void *next_fp;
+
+    while (fp && count < size) {
+        next_fp = fp[0];
+
+#if defined(__ppc__) || defined(__ppc64__)
+        ret = fp[2];
+#elif defined(__i386__) || defined(__x86_64__)
+        ret = fp[1];
+#else
+        printf("Unknown platform - backtrace unavailable\n");
+        break;
+#endif
+
+        if (!ret)
             break;
-        saved_ra = *(fp + 2);
-        array[level-1] = saved_ra;
-        level++;
-        if (level >= size)
+
+        array[count++] = ret;
+
+        if (!next_fp)
             break;
+
+        uintptr_t n = (uintptr_t)next_fp;
+
+#if defined(__ppc__) || defined(__i386__)
+        if (n < 0x1000u || n > 0xFFFFFFFFu)
+            break;
+#else
+        if (n < 0x1000ull || n > 0x0000FFFFFFFFFFFFull)
+            break;
+#endif
+
+        fp = (void **)next_fp;
     }
-    return level;
+
+    return count;
 }
+
 
 // Takes the array returned by backtrace() and returns a list of functions
 char **backtrace_symbols(void** array, int size)
