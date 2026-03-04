@@ -28,7 +28,10 @@ int backtrace(void **array, int size)
         next_fp = fp[0];
 
 #if defined(__ppc__) || defined(__ppc64__)
-        ret = fp[2];
+        if (count == 0)
+            ret = __builtin_return_address(0);
+        else
+            ret = fp[2];
 #elif defined(__i386__) || defined(__x86_64__)
         ret = fp[1];
 #else
